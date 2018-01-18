@@ -285,7 +285,7 @@ func (chaincodeSupport *ChaincodeSupport) registerHandler(chaincodehandler *Hand
 
 	//now we are ready to receive messages and send back responses
 	chaincodehandler.txCtxs = make(map[string]*transactionContext)
-	chaincodehandler.txCtxRefCount = make(map[string]int)
+	chaincodehandler.txCtxStack = make(TxCtxStack, 0)
 	chaincodehandler.txidMap = make(map[string]bool)
 
 	chaincodeLogger.Debugf("registered handler complete for chaincode %s", key)

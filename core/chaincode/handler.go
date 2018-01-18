@@ -62,6 +62,22 @@ type nextStateInfo struct {
 	sendSync bool
 }
 
+type TxCtxStack []*transactionContext
+
+func (s *TxCtxStack) Push(v *transactionContext) {
+    *s = append(*s, v)
+}
+
+func (s *TxCtxStack) Pop() *transactionContext {
+    ret := (*s)[len(*s)-1]
+    *s = (*s)[0:len(*s)-1]
+    return ret
+}
+
+func (s *TxCtxStack) IsEmpty() bool {
+    return len(*s) == 0
+}
+
 // Handler responsible for management of Peer's side of chaincode stream
 type Handler struct {
 	sync.RWMutex
@@ -78,7 +94,7 @@ type Handler struct {
 	// Map of tx txid to either invoke tx. Each tx will be
 	// added prior to execute and remove when done execute
 	txCtxs map[string]*transactionContext
-	txCtxRefCount map[string]int
+	txCtxStack TxCtxStack
 
 	txidMap map[string]bool
 
@@ -168,9 +184,11 @@ func (handler *Handler) createTxContext(ctxt context.Context, chainID string, tx
 	}
 	handler.Lock()
 	defer handler.Unlock()
-	handler.txCtxRefCount[txid]++
+	
 	if handler.txCtxs[txid] != nil {
-		return handler.txCtxs[txid], nil
+		chaincodeLogger.Debugf("storing existing context for [%s]", chainID)
+		handler.txCtxStack.Push(handler.txCtxs[txid])
+		handler.txCtxs[txid] = nil
 	}
 	
 	txctx := &transactionContext{chainID: chainID, signedProp: signedProp,
@@ -192,10 +210,11 @@ func (handler *Handler) getTxContext(txid string) *transactionContext {
 func (handler *Handler) deleteTxContext(txid string) {
 	handler.Lock()
 	defer handler.Unlock()
-	if handler.txCtxRefCount != nil && handler.txCtxs != nil {
-		handler.txCtxRefCount[txid]--;
-		if handler.txCtxRefCount[txid] == 0 {
-			delete(handler.txCtxs, txid)
+	if handler.txCtxs != nil {
+		delete(handler.txCtxs, txid)
+
+		if !handler.txCtxStack.IsEmpty() {
+			handler.txCtxs[txid] = handler.txCtxStack.Pop()
 		}
 	}
 }
