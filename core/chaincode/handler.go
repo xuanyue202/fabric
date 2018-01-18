@@ -78,6 +78,7 @@ type Handler struct {
 	// Map of tx txid to either invoke tx. Each tx will be
 	// added prior to execute and remove when done execute
 	txCtxs map[string]*transactionContext
+	txCtxRefCount map[string]int
 
 	txidMap map[string]bool
 
@@ -167,9 +168,11 @@ func (handler *Handler) createTxContext(ctxt context.Context, chainID string, tx
 	}
 	handler.Lock()
 	defer handler.Unlock()
+	handler.txCtxRefCount[txid]++
 	if handler.txCtxs[txid] != nil {
-		return nil, errors.Errorf("txid: %s exists", txid)
+		return handler.txCtxs[txid], nil
 	}
+	
 	txctx := &transactionContext{chainID: chainID, signedProp: signedProp,
 		proposal: prop, responseNotifier: make(chan *pb.ChaincodeMessage, 1),
 		queryIteratorMap: make(map[string]commonledger.ResultsIterator)}
@@ -189,8 +192,11 @@ func (handler *Handler) getTxContext(txid string) *transactionContext {
 func (handler *Handler) deleteTxContext(txid string) {
 	handler.Lock()
 	defer handler.Unlock()
-	if handler.txCtxs != nil {
-		delete(handler.txCtxs, txid)
+	if handler.txCtxRefCount != nil && handler.txCtxs != nil {
+		handler.txCtxRefCount[txid]--;
+		if handler.txCtxRefCount[txid] == 0 {
+			delete(handler.txCtxs, txid)
+		}
 	}
 }
 
